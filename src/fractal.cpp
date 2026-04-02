@@ -95,7 +95,7 @@ void kernel_cblk(unsigned char* ptr) {
 }
 
 void kernel_omp_for(unsigned char* ptr) {
-    #pragma omp parallel for collapse(2)
+    #pragma omp parallel for collapse(2) schedule(dynamic, 1)
     for (int y = 0; y < DIM; y++) {
         for (int x = 0; x < DIM; x++) {
             int offset = x + y * DIM;
@@ -138,7 +138,7 @@ double timed_execute(unsigned char* ptr, std::function<void(unsigned char*)> fun
 
 /* Output helper function */
 void output(string func, double func_time, double s_time) {
-    cout << func << ": " << func_time << "ms | Speedup: " << s_time/func_time << endl;
+    cout << func << ":\t" << func_time << "ms \t| Speedup: " << s_time/func_time << endl;
 }
 
 /* Runs multiple timed executions and returns the average time */
@@ -181,12 +181,12 @@ int main(void) {
     time_p = timed_multirun(image_f, kernel_omp_for, runs);
 
     cout << "Elapsed time:\n";
-    cout << "Serial time: " << time_s << "ms" << endl;
+    cout << "Serial time:\t" << time_s << "ms" << endl;
     output("1D Rowwise", time_r, time_s);
     output("1D Colwise", time_c, time_s);
     output("2D Row-block", time_rblk, time_s);
     output("2D Col-block", time_cblk, time_s);
-    output("Omp For", time_p, time_s);
+    output("Collapsed for", time_p, time_s);
 
     /* Save result */
     save_ppm("output/fractal_serial.ppm", image_s, DIM, DIM);
