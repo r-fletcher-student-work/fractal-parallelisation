@@ -114,9 +114,9 @@ void kernel_serial(unsigned char* ptr) {
             int offset = x + y * DIM;
 
             int juliaValue = julia(x, y);
-            ptr[offset * 3 + 0] = 255 * juliaValue;
-            ptr[offset * 3 + 1] = 0;
-            ptr[offset * 3 + 2] = 0;
+            ptr[offset * 3 + 0] = 255 * juliaValue; // R
+            ptr[offset * 3 + 1] = 0;               // G
+            ptr[offset * 3 + 2] = 0;               // B
         }
     }
 }
@@ -129,16 +129,19 @@ void save_ppm(const char* filename, unsigned char* data, int width, int height) 
     file.close();
 }
 
+/* Executed a function and times it */
 double timed_execute(unsigned char* ptr, std::function<void(unsigned char*)> func) {
     double start = omp_get_wtime();
     func(ptr);
     return omp_get_wtime() - start;
 }
 
+/* Output helper function */
 void output(string func, double func_time, double s_time) {
     cout << func << ": " << func_time << "ms | Speedup: " << s_time/func_time << endl;
 }
 
+/* Runs multiple timed executions and returns the average time */
 double timed_multirun(unsigned char* ptr, std::function<void(unsigned char*)> func, int runs) {
     double total_time = 0;
     for (int i = 0; i < runs; i++) {
@@ -149,29 +152,33 @@ double timed_multirun(unsigned char* ptr, std::function<void(unsigned char*)> fu
 
 int main(void) {
     unsigned char* image_s = new unsigned char[DIM * DIM * 3];
-    unsigned char* image_p = new unsigned char[DIM * DIM * 3];
+    unsigned char* image_r = new unsigned char[DIM * DIM * 3];
+    unsigned char* image_c = new unsigned char[DIM * DIM * 3];
+    unsigned char* image_rb = new unsigned char[DIM * DIM * 3];
+    unsigned char* image_cb = new unsigned char[DIM * DIM * 3];
+    unsigned char* image_f = new unsigned char[DIM * DIM * 3];
 
     double time_s, time_r, time_c, time_rblk, time_cblk, time_p;
 
-    int runs = 5;
+    const int runs = 10;
 
     /* Serial run */
     time_s = timed_multirun(image_s, kernel_serial, runs);
 
     /* 1D Rowwise */
-    time_r = timed_multirun(image_p, kernel_row, runs);
+    time_r = timed_multirun(image_r, kernel_row, runs);
 
     /* 1D Colwise */
-    time_c = timed_multirun(image_p, kernel_col, runs);
+    time_c = timed_multirun(image_c, kernel_col, runs);
 
     /* 2D Rowblockwise */
-    time_rblk = timed_multirun(image_p, kernel_rblk, runs);
+    time_rblk = timed_multirun(image_rb, kernel_rblk, runs);
 
     /* 2D Colblockwise */
-    time_cblk = timed_multirun(image_p, kernel_cblk, runs);
+    time_cblk = timed_multirun(image_cb, kernel_cblk, runs);
 
-    /* Parallel */
-    time_p = timed_multirun(image_p, kernel_omp_for, runs);
+    /* OMP for */
+    time_p = timed_multirun(image_f, kernel_omp_for, runs);
 
     cout << "Elapsed time:\n";
     cout << "Serial time: " << time_s << "ms" << endl;
@@ -183,9 +190,17 @@ int main(void) {
 
     /* Save result */
     save_ppm("output/fractal_serial.ppm", image_s, DIM, DIM);
-    save_ppm("output/fractal_par.ppm", image_p, DIM, DIM);  
+    save_ppm("output/fractal_row.ppm", image_r, DIM, DIM);  
+    save_ppm("output/fractal_col.ppm", image_c, DIM, DIM);  
+    save_ppm("output/fractal_rb.ppm", image_rb, DIM, DIM);  
+    save_ppm("output/fractal_cb.ppm", image_cb, DIM, DIM);  
+    save_ppm("output/fractal_for.ppm", image_f, DIM, DIM);  
 
     delete[] image_s;
-    delete[] image_p;
+    delete[] image_r;
+    delete[] image_c;
+    delete[] image_rb;
+    delete[] image_cb;
+    delete[] image_f;
     return 0;
 }
