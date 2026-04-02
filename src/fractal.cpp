@@ -2,6 +2,7 @@
 #include <fstream>
 #include <cstdlib>
 #include <omp.h>
+#include <functional>
 using namespace std;
 
 #define DIM 768
@@ -35,8 +36,66 @@ int julia(int x, int y) {
     return 1;
 }
 
-/* Students should parallelize this */
-void kernel_omp(unsigned char* ptr) {
+void kernel_row(unsigned char* ptr) {
+    #pragma omp parallel for schedule(static, 1)
+    for (int y = 0; y < DIM; y++) {
+        for (int x = 0; x < DIM; x++) {
+            int offset = x + y * DIM;
+
+            int juliaValue = julia(x, y);
+            ptr[offset * 3 + 0] = 255 * juliaValue; // R
+            ptr[offset * 3 + 1] = 0;               // G
+            ptr[offset * 3 + 2] = 0;               // B
+        }
+    }
+}
+
+void kernel_col(unsigned char* ptr) {
+    #pragma omp parallel for schedule(static, 1)
+    for (int x = 0; x < DIM; x++) {    
+        for (int y = 0; y < DIM; y++) {
+            int offset = x + y * DIM;
+
+            int juliaValue = julia(x, y);
+            ptr[offset * 3 + 0] = 255 * juliaValue; // R
+            ptr[offset * 3 + 1] = 0;               // G
+            ptr[offset * 3 + 2] = 0;               // B
+        }
+    }
+}
+
+void kernel_rblk(unsigned char* ptr) {
+    int block_size = (int) DIM/omp_get_max_threads();
+    #pragma omp parallel for schedule(static, block_size)
+    for (int y = 0; y < DIM; y++) {
+        for (int x = 0; x < DIM; x++) {
+            int offset = x + y * DIM;
+
+            int juliaValue = julia(x, y);
+            ptr[offset * 3 + 0] = 255 * juliaValue; // R
+            ptr[offset * 3 + 1] = 0;               // G
+            ptr[offset * 3 + 2] = 0;               // B
+        }
+    }
+}
+
+void kernel_cblk(unsigned char* ptr) {
+    int block_size = (int) DIM/omp_get_max_threads();
+    #pragma omp parallel for schedule(static, block_size)
+    for (int x = 0; x < DIM; x++) {    
+        for (int y = 0; y < DIM; y++) {
+            int offset = x + y * DIM;
+
+            int juliaValue = julia(x, y);
+            ptr[offset * 3 + 0] = 255 * juliaValue; // R
+            ptr[offset * 3 + 1] = 0;               // G
+            ptr[offset * 3 + 2] = 0;               // B
+        }
+    }
+}
+
+void kernel_omp_for(unsigned char* ptr) {
+    #pragma omp parallel for collapse(2)
     for (int y = 0; y < DIM; y++) {
         for (int x = 0; x < DIM; x++) {
             int offset = x + y * DIM;
@@ -70,30 +129,61 @@ void save_ppm(const char* filename, unsigned char* data, int width, int height) 
     file.close();
 }
 
+double timed_execute(unsigned char* ptr, std::function<void(unsigned char*)> func) {
+    double start = omp_get_wtime();
+    func(ptr);
+    return omp_get_wtime() - start;
+}
+
+void output(string func, double func_time, double s_time) {
+    cout << func << ": " << func_time << "ms | Speedup: " << s_time/func_time << endl;
+}
+
+double timed_multirun(unsigned char* ptr, std::function<void(unsigned char*)> func, int runs) {
+    double total_time = 0;
+    for (int i = 0; i < runs; i++) {
+        total_time += timed_execute(ptr, func);
+    }
+    return total_time/(double) runs;
+}
+
 int main(void) {
     unsigned char* image_s = new unsigned char[DIM * DIM * 3];
     unsigned char* image_p = new unsigned char[DIM * DIM * 3];
 
-    double start, finish_s, finish_p;
+    double time_s, time_r, time_c, time_rblk, time_cblk, time_p;
+
+    int runs = 5;
 
     /* Serial run */
-    start = omp_get_wtime();
-    kernel_serial(image_s);
-    finish_s = omp_get_wtime() - start;
+    time_s = timed_multirun(image_s, kernel_serial, runs);
 
-    /* Parallel run */
-    start = omp_get_wtime();
-    kernel_omp(image_p);
-    finish_p = omp_get_wtime() - start;
+    /* 1D Rowwise */
+    time_r = timed_multirun(image_p, kernel_row, runs);
+
+    /* 1D Colwise */
+    time_c = timed_multirun(image_p, kernel_col, runs);
+
+    /* 2D Rowblockwise */
+    time_rblk = timed_multirun(image_p, kernel_rblk, runs);
+
+    /* 2D Colblockwise */
+    time_cblk = timed_multirun(image_p, kernel_cblk, runs);
+
+    /* Parallel */
+    time_p = timed_multirun(image_p, kernel_omp_for, runs);
 
     cout << "Elapsed time:\n";
-    cout << "Serial time: " << finish_s << endl;
-    cout << "Parallel time: " << finish_p << endl;
-    cout << "Speedup: " << finish_s / finish_p << endl;
+    cout << "Serial time: " << time_s << "ms" << endl;
+    output("1D Rowwise", time_r, time_s);
+    output("1D Colwise", time_c, time_s);
+    output("2D Row-block", time_rblk, time_s);
+    output("2D Col-block", time_cblk, time_s);
+    output("Omp For", time_p, time_s);
 
     /* Save result */
     save_ppm("output/fractal_serial.ppm", image_s, DIM, DIM);
-    save_ppm("output/fractal_par.ppm", image_p, DIM, DIM);    
+    save_ppm("output/fractal_par.ppm", image_p, DIM, DIM);  
 
     delete[] image_s;
     delete[] image_p;
