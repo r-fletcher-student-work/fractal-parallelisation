@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <omp.h>
 #include <functional>
+#include <cmath>
 using namespace std;
 
 #define DIM 768
@@ -20,7 +21,7 @@ struct cuComplex {
     }
 };
 
-int julia(int x, int y) {
+double julia(int x, int y) {
     const float scale = 1.5;
     float jx = scale * (float)(DIM / 2 - x) / (DIM / 2);
     float jy = scale * (float)(DIM / 2 - y) / (DIM / 2);
@@ -31,66 +32,128 @@ int julia(int x, int y) {
     for (int i = 0; i < 300; i++) {
         a = a * a + c;
         if (a.magnitude2() > 1000)
-            return 0;
+            return 1000;
     }
-    return 1;
+    return a.magnitude2();
 }
 
 void kernel_row(unsigned char* ptr) {
-    #pragma omp parallel for schedule(static, 1)
-    for (int y = 0; y < DIM; y++) {
+    #pragma omp parallel 
+    {
+        int num_threads = omp_get_num_threads();
+        int curr_thread = omp_get_thread_num();
+    for (int y = curr_thread; y < DIM; y += num_threads) {
         for (int x = 0; x < DIM; x++) {
             int offset = x + y * DIM;
 
-            int juliaValue = julia(x, y);
-            ptr[offset * 3 + 0] = 255 * juliaValue; // R
-            ptr[offset * 3 + 1] = 0;               // G
-            ptr[offset * 3 + 2] = 0;               // B
+            double val = julia(x, y);
+
+            if (val == 1000) { //diverged
+                ptr[offset * 3 + 0] = 0;
+                ptr[offset * 3 + 1] = 0;
+                ptr[offset * 3 + 2] = 0;
+            } else {
+                double t = log(val + 1.0) / log(5.0);
+                t*= 2.0;
+                if (t > 1.0) t = 1.0;
+
+                ptr[offset * 3 + 0] = (unsigned char)(255 * t);                  // R
+                ptr[offset * 3 + 1] = (unsigned char)(100 * pow(t, 0.5));        // G
+                ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
+            }
         }
+    }
     }
 }
 
 void kernel_col(unsigned char* ptr) {
-    #pragma omp parallel for schedule(static, 1)
-    for (int x = 0; x < DIM; x++) {    
-        for (int y = 0; y < DIM; y++) {
+    #pragma omp parallel
+    {
+        int num_threads = omp_get_num_threads();
+        int curr_thread = omp_get_thread_num();
+    for (int y = 0; y < DIM; y++) {
+            for (int x = curr_thread; x < DIM; x += num_threads) {  
             int offset = x + y * DIM;
 
-            int juliaValue = julia(x, y);
-            ptr[offset * 3 + 0] = 255 * juliaValue; // R
-            ptr[offset * 3 + 1] = 0;               // G
-            ptr[offset * 3 + 2] = 0;               // B
+            double val = julia(x, y);
+
+            if (val == 1000) { //diverged
+                ptr[offset * 3 + 0] = 0;
+                ptr[offset * 3 + 1] = 0;
+                ptr[offset * 3 + 2] = 0;
+            } else {
+                double t = log(val + 1.0) / log(5.0);
+                t*= 2.0;
+                if (t > 1.0) t = 1.0;
+
+                ptr[offset * 3 + 0] = (unsigned char)(255 * t);                  // R
+                ptr[offset * 3 + 1] = (unsigned char)(100 * pow(t, 0.5));        // G
+                ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
+            }
         }
+    }
     }
 }
 
 void kernel_rblk(unsigned char* ptr) {
-    int block_size = (int) DIM/omp_get_max_threads();
-    #pragma omp parallel for schedule(static, block_size)
-    for (int y = 0; y < DIM; y++) {
+    #pragma omp parallel 
+    {
+        int num_threads = omp_get_num_threads();
+        int curr_thread = omp_get_thread_num();
+        int block_size = (int) DIM/omp_get_max_threads();
+        int end = curr_thread == num_threads - 1 ? DIM : block_size * (curr_thread + 1);
+    for (int y = curr_thread*block_size; y < end; y++) {
         for (int x = 0; x < DIM; x++) {
             int offset = x + y * DIM;
 
-            int juliaValue = julia(x, y);
-            ptr[offset * 3 + 0] = 255 * juliaValue; // R
-            ptr[offset * 3 + 1] = 0;               // G
-            ptr[offset * 3 + 2] = 0;               // B
+            double val = julia(x, y);
+
+            if (val == 1000) { //diverged
+                ptr[offset * 3 + 0] = 0;
+                ptr[offset * 3 + 1] = 0;
+                ptr[offset * 3 + 2] = 0;
+            } else {
+                double t = log(val + 1.0) / log(5.0);
+                t*= 2.0;
+                if (t > 1.0) t = 1.0;
+
+                ptr[offset * 3 + 0] = (unsigned char)(255 * t);                  // R
+                ptr[offset * 3 + 1] = (unsigned char)(100 * pow(t, 0.5));        // G
+                ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
+            }
         }
+    }
     }
 }
 
 void kernel_cblk(unsigned char* ptr) {
-    int block_size = (int) DIM/omp_get_max_threads();
-    #pragma omp parallel for schedule(static, block_size)
-    for (int x = 0; x < DIM; x++) {    
-        for (int y = 0; y < DIM; y++) {
+    #pragma omp parallel
+    {
+        int num_threads = omp_get_num_threads();
+        int curr_thread = omp_get_thread_num();
+        int block_size = (int) DIM/omp_get_max_threads();
+        int end = curr_thread == num_threads - 1 ? DIM : block_size * (curr_thread + 1);  
+    for (int y = 0; y < DIM; y++) {
+        for (int x = curr_thread*block_size; x < end; x++) {  
             int offset = x + y * DIM;
 
-            int juliaValue = julia(x, y);
-            ptr[offset * 3 + 0] = 255 * juliaValue; // R
-            ptr[offset * 3 + 1] = 0;               // G
-            ptr[offset * 3 + 2] = 0;               // B
+            double val = julia(x, y);
+
+            if (val == 1000) { //diverged
+                ptr[offset * 3 + 0] = 0;
+                ptr[offset * 3 + 1] = 0;
+                ptr[offset * 3 + 2] = 0;
+            } else {
+                double t = log(val + 1.0) / log(5.0);
+                t*= 2.0;
+                if (t > 1.0) t = 1.0;
+
+                ptr[offset * 3 + 0] = (unsigned char)(255 * t);                  // R
+                ptr[offset * 3 + 1] = (unsigned char)(100 * pow(t, 0.5));        // G
+                ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
+            }
         }
+    }
     }
 }
 
@@ -100,10 +163,21 @@ void kernel_omp_for_static(unsigned char* ptr) {
         for (int x = 0; x < DIM; x++) {
             int offset = x + y * DIM;
 
-            int juliaValue = julia(x, y);
-            ptr[offset * 3 + 0] = 255 * juliaValue; // R
-            ptr[offset * 3 + 1] = 0;               // G
-            ptr[offset * 3 + 2] = 0;               // B
+            double val = julia(x, y);
+
+            if (val == 1000) { //diverged
+                ptr[offset * 3 + 0] = 0;
+                ptr[offset * 3 + 1] = 0;
+                ptr[offset * 3 + 2] = 0;
+            } else {
+                double t = log(val + 1.0) / log(5.0);
+                t*= 2.0;
+                if (t > 1.0) t = 1.0;
+
+                ptr[offset * 3 + 0] = (unsigned char)(255 * t);                  // R
+                ptr[offset * 3 + 1] = (unsigned char)(100 * pow(t, 0.5));        // G
+                ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
+            }
         }
     }
 }
@@ -114,10 +188,21 @@ void kernel_omp_for_dynamic(unsigned char* ptr) {
         for (int x = 0; x < DIM; x++) {
             int offset = x + y * DIM;
 
-            int juliaValue = julia(x, y);
-            ptr[offset * 3 + 0] = 255 * juliaValue; // R
-            ptr[offset * 3 + 1] = 0;               // G
-            ptr[offset * 3 + 2] = 0;               // B
+            double val = julia(x, y);
+
+            if (val == 1000) { //diverged
+                ptr[offset * 3 + 0] = 0;
+                ptr[offset * 3 + 1] = 0;
+                ptr[offset * 3 + 2] = 0;
+            } else {
+                double t = log(val + 1.0) / log(5.0);
+                t*= 2.0;
+                if (t > 1.0) t = 1.0;
+
+                ptr[offset * 3 + 0] = (unsigned char)(255 * t);                  // R
+                ptr[offset * 3 + 1] = (unsigned char)(100 * pow(t, 0.5));        // G
+                ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
+            }
         }
     }
 }
@@ -127,10 +212,21 @@ void kernel_serial(unsigned char* ptr) {
         for (int x = 0; x < DIM; x++) {
             int offset = x + y * DIM;
 
-            int juliaValue = julia(x, y);
-            ptr[offset * 3 + 0] = 255 * juliaValue; // R
-            ptr[offset * 3 + 1] = 0;               // G
-            ptr[offset * 3 + 2] = 0;               // B
+            double val = julia(x, y);
+
+            if (val == 1000) { //diverged
+                ptr[offset * 3 + 0] = 0;
+                ptr[offset * 3 + 1] = 0;
+                ptr[offset * 3 + 2] = 0;
+            } else {
+                double t = log(val + 1.0) / log(5.0);
+                t*= 2.0;
+                if (t > 1.0) t = 1.0;
+
+                ptr[offset * 3 + 0] = (unsigned char)(255 * t);                  // R
+                ptr[offset * 3 + 1] = (unsigned char)(100 * pow(t, 0.5));        // G
+                ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
+            }
         }
     }
 }
@@ -176,12 +272,12 @@ int main(void) {
 
     // csv file for timings
     ofstream csv("timings.csv");
-    csv << "threads,serial,row,col,rowblk,colblk,for_static,for_dynamic\n";
+    csv << "threads,serial,1D row,1D col,2D rowblock,2D colblock,for static,for dynamic\n";
 
     const int runs = 10;
 
     int t;
-    for (int i = 0; i <= 16; i+=2) {
+    for (int i = 0; i <= 24; i+=2) {
         if (i == 0) t = 1;
         else t = i;
 
