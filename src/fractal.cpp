@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <omp.h>
 #include <functional>
+#include <cmath>
 using namespace std;
 
 #define DIM 768
@@ -20,7 +21,7 @@ struct cuComplex {
     }
 };
 
-int julia(int x, int y) {
+double julia(int x, int y) {
     const float scale = 1.5;
     float jx = scale * (float)(DIM / 2 - x) / (DIM / 2);
     float jy = scale * (float)(DIM / 2 - y) / (DIM / 2);
@@ -31,9 +32,9 @@ int julia(int x, int y) {
     for (int i = 0; i < 300; i++) {
         a = a * a + c;
         if (a.magnitude2() > 1000)
-            return 0;
+            return 1000;
     }
-    return 1;
+    return a.magnitude2();
 }
 
 void kernel_row(unsigned char* ptr) {
@@ -42,10 +43,21 @@ void kernel_row(unsigned char* ptr) {
         for (int x = 0; x < DIM; x++) {
             int offset = x + y * DIM;
 
-            int juliaValue = julia(x, y);
-            ptr[offset * 3 + 0] = 255 * juliaValue; // R
-            ptr[offset * 3 + 1] = 0;               // G
-            ptr[offset * 3 + 2] = 0;               // B
+            double val = julia(x, y);
+
+            if (val == 1000) { //diverged
+                ptr[offset * 3 + 0] = 0;
+                ptr[offset * 3 + 1] = 0;
+                ptr[offset * 3 + 2] = 0;
+            } else {
+                double t = log(val + 1.0) / log(5.0);
+                t*= 2.0;
+                if (t > 1.0) t = 1.0;
+
+                ptr[offset * 3 + 0] = (unsigned char)(255 * t);                  // R
+                ptr[offset * 3 + 1] = (unsigned char)(100 * pow(t, 0.5));        // G
+                ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
+            }
         }
     }
 }
@@ -178,7 +190,7 @@ int main(void) {
     ofstream csv("timings.csv");
     csv << "threads,serial,row,col,rowblk,colblk,for_static,for_dynamic\n";
 
-    const int runs = 10;
+    const int runs = 1;
 
     int t;
     for (int i = 0; i <= 16; i+=2) {
@@ -195,6 +207,8 @@ int main(void) {
 
         /* 1D Rowwise */
         time_r = timed_multirun(image_r, kernel_row, runs);
+
+            save_ppm("output/fractal_row.ppm", image_r, DIM, DIM);
 
         /* 1D Colwise */
         time_c = timed_multirun(image_c, kernel_col, runs);
