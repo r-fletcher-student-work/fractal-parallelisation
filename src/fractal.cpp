@@ -4,9 +4,11 @@
 #include <omp.h>
 #include <functional>
 #include <cmath>
+#include <png.h>
 using namespace std;
 
-#define DIM 768
+//#define DIM 7680
+#define DIM 12288
 
 struct cuComplex {
     float r;
@@ -31,155 +33,12 @@ double julia(int x, int y) {
 
     for (int i = 0; i < 300; i++) {
         a = a * a + c;
-        if (a.magnitude2() > 1000)
-            return 1000;
-    }
-    return a.magnitude2();
-}
-
-void kernel_row(unsigned char* ptr) {
-    #pragma omp parallel 
-    {
-        int num_threads = omp_get_num_threads();
-        int curr_thread = omp_get_thread_num();
-    for (int y = curr_thread; y < DIM; y += num_threads) {
-        for (int x = 0; x < DIM; x++) {
-            int offset = x + y * DIM;
-
-            double val = julia(x, y);
-
-            if (val == 1000) { //diverged
-                ptr[offset * 3 + 0] = 0;
-                ptr[offset * 3 + 1] = 0;
-                ptr[offset * 3 + 2] = 0;
-            } else {
-                double t = log(val + 1.0) / log(5.0);
-                t*= 2.0;
-                if (t > 1.0) t = 1.0;
-
-                ptr[offset * 3 + 0] = (unsigned char)(255 * t);                  // R
-                ptr[offset * 3 + 1] = (unsigned char)(100 * pow(t, 0.5));        // G
-                ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
-            }
+        if (a.magnitude2() > 1000) {
+            double smooth = i + 1.0 - log2(log2(sqrt(a.magnitude2())));
+            return smooth;
         }
     }
-    }
-}
-
-void kernel_col(unsigned char* ptr) {
-    #pragma omp parallel
-    {
-        int num_threads = omp_get_num_threads();
-        int curr_thread = omp_get_thread_num();
-    for (int y = 0; y < DIM; y++) {
-            for (int x = curr_thread; x < DIM; x += num_threads) {  
-            int offset = x + y * DIM;
-
-            double val = julia(x, y);
-
-            if (val == 1000) { //diverged
-                ptr[offset * 3 + 0] = 0;
-                ptr[offset * 3 + 1] = 0;
-                ptr[offset * 3 + 2] = 0;
-            } else {
-                double t = log(val + 1.0) / log(5.0);
-                t*= 2.0;
-                if (t > 1.0) t = 1.0;
-
-                ptr[offset * 3 + 0] = (unsigned char)(255 * t);                  // R
-                ptr[offset * 3 + 1] = (unsigned char)(100 * pow(t, 0.5));        // G
-                ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
-            }
-        }
-    }
-    }
-}
-
-void kernel_rblk(unsigned char* ptr) {
-    #pragma omp parallel 
-    {
-        int num_threads = omp_get_num_threads();
-        int curr_thread = omp_get_thread_num();
-        int block_size = (int) DIM/omp_get_max_threads();
-        int end = curr_thread == num_threads - 1 ? DIM : block_size * (curr_thread + 1);
-    for (int y = curr_thread*block_size; y < end; y++) {
-        for (int x = 0; x < DIM; x++) {
-            int offset = x + y * DIM;
-
-            double val = julia(x, y);
-
-            if (val == 1000) { //diverged
-                ptr[offset * 3 + 0] = 0;
-                ptr[offset * 3 + 1] = 0;
-                ptr[offset * 3 + 2] = 0;
-            } else {
-                double t = log(val + 1.0) / log(5.0);
-                t*= 2.0;
-                if (t > 1.0) t = 1.0;
-
-                ptr[offset * 3 + 0] = (unsigned char)(255 * t);                  // R
-                ptr[offset * 3 + 1] = (unsigned char)(100 * pow(t, 0.5));        // G
-                ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
-            }
-        }
-    }
-    }
-}
-
-void kernel_cblk(unsigned char* ptr) {
-    #pragma omp parallel
-    {
-        int num_threads = omp_get_num_threads();
-        int curr_thread = omp_get_thread_num();
-        int block_size = (int) DIM/omp_get_max_threads();
-        int end = curr_thread == num_threads - 1 ? DIM : block_size * (curr_thread + 1);  
-    for (int y = 0; y < DIM; y++) {
-        for (int x = curr_thread*block_size; x < end; x++) {  
-            int offset = x + y * DIM;
-
-            double val = julia(x, y);
-
-            if (val == 1000) { //diverged
-                ptr[offset * 3 + 0] = 0;
-                ptr[offset * 3 + 1] = 0;
-                ptr[offset * 3 + 2] = 0;
-            } else {
-                double t = log(val + 1.0) / log(5.0);
-                t*= 2.0;
-                if (t > 1.0) t = 1.0;
-
-                ptr[offset * 3 + 0] = (unsigned char)(255 * t);                  // R
-                ptr[offset * 3 + 1] = (unsigned char)(100 * pow(t, 0.5));        // G
-                ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
-            }
-        }
-    }
-    }
-}
-
-void kernel_omp_for_static(unsigned char* ptr) {
-    #pragma omp parallel for collapse(2) schedule(static)
-    for (int y = 0; y < DIM; y++) {
-        for (int x = 0; x < DIM; x++) {
-            int offset = x + y * DIM;
-
-            double val = julia(x, y);
-
-            if (val == 1000) { //diverged
-                ptr[offset * 3 + 0] = 0;
-                ptr[offset * 3 + 1] = 0;
-                ptr[offset * 3 + 2] = 0;
-            } else {
-                double t = log(val + 1.0) / log(5.0);
-                t*= 2.0;
-                if (t > 1.0) t = 1.0;
-
-                ptr[offset * 3 + 0] = (unsigned char)(255 * t);                  // R
-                ptr[offset * 3 + 1] = (unsigned char)(100 * pow(t, 0.5));        // G
-                ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
-            }
-        }
-    }
+    return -1; //inside set
 }
 
 void kernel_omp_for_dynamic(unsigned char* ptr) {
@@ -190,159 +49,91 @@ void kernel_omp_for_dynamic(unsigned char* ptr) {
 
             double val = julia(x, y);
 
-            if (val == 1000) { //diverged
+            if (val < 0) { //inside set
                 ptr[offset * 3 + 0] = 0;
                 ptr[offset * 3 + 1] = 0;
                 ptr[offset * 3 + 2] = 0;
             } else {
-                double t = log(val + 1.0) / log(5.0);
-                t*= 2.0;
-                if (t > 1.0) t = 1.0;
+                double t = val / 300;
 
-                ptr[offset * 3 + 0] = (unsigned char)(255 * t);                  // R
-                ptr[offset * 3 + 1] = (unsigned char)(100 * pow(t, 0.5));        // G
-                ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
+                // Power curve — pushes mid-tones darker, concentrates colour near boundary
+                t = pow(t, 0.4);
+
+                // Red/purple -> blue -> black
+                double r = 0.5 + 0.5 * cos(2.0 * M_PI * (t * 1.0 + 0.0));
+                double g = 0.5 + 0.5 * cos(2.0 * M_PI * (t * 1.0 + 0.45));
+                double b = 0.5 + 0.5 * cos(2.0 * M_PI * (t * 1.0 + 0.35));
+
+                ptr[offset * 3 + 0] = (unsigned char)(255 * r);
+                ptr[offset * 3 + 1] = (unsigned char)(255 * g);
+                ptr[offset * 3 + 2] = (unsigned char)(255 * b);
             }
         }
     }
 }
 
-void kernel_serial(unsigned char* ptr) {
-    for (int y = 0; y < DIM; y++) {
-        for (int x = 0; x < DIM; x++) {
-            int offset = x + y * DIM;
-
-            double val = julia(x, y);
-
-            if (val == 1000) { //diverged
-                ptr[offset * 3 + 0] = 0;
-                ptr[offset * 3 + 1] = 0;
-                ptr[offset * 3 + 2] = 0;
-            } else {
-                double t = log(val + 1.0) / log(5.0);
-                t*= 2.0;
-                if (t > 1.0) t = 1.0;
-
-                ptr[offset * 3 + 0] = (unsigned char)(255 * t);                  // R
-                ptr[offset * 3 + 1] = (unsigned char)(100 * pow(t, 0.5));        // G
-                ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
-            }
-        }
+bool save_png(const char* filename, unsigned char* data, int width, int height) {
+    FILE* fp = fopen(filename, "wb");
+    if (!fp) {
+        cerr << "Failed to open file: " << filename << endl;
+        return false;
     }
-}
 
-/* Save image as PPM */
-void save_ppm(const char* filename, unsigned char* data, int width, int height) {
-    ofstream file(filename, ios::binary);
-    file << "P6\n" << width << " " << height << "\n255\n";
-    file.write(reinterpret_cast<char*>(data), width * height * 3);
-    file.close();
-}
-
-/* Executed a function and times it */
-double timed_execute(unsigned char* ptr, std::function<void(unsigned char*)> func) {
-    double start = omp_get_wtime();
-    func(ptr);
-    return omp_get_wtime() - start;
-}
-
-/* Output helper function */
-void output(string func, double func_time, double s_time) {
-    cout << func << ":\t" << func_time << "ms \t| Speedup: " << s_time/func_time << endl;
-}
-
-/* Runs multiple timed executions and returns the average time */
-double timed_multirun(unsigned char* ptr, std::function<void(unsigned char*)> func, int runs) {
-    double total_time = 0;
-    for (int i = 0; i < runs; i++) {
-        total_time += timed_execute(ptr, func);
+    png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+    if (!png) { fclose(fp); return false; }
+ 
+    png_infop info = png_create_info_struct(png);
+    if (!info) { png_destroy_write_struct(&png, nullptr); fclose(fp); return false; }
+ 
+    if (setjmp(png_jmpbuf(png))) {
+        png_destroy_write_struct(&png, &info);
+        fclose(fp);
+        return false;
     }
-    return total_time/(double) runs;
+ 
+    png_init_io(png, fp);
+    png_set_IHDR(png, info, width, height, 8,
+                 PNG_COLOR_TYPE_RGB,
+                 PNG_INTERLACE_NONE,
+                 PNG_COMPRESSION_TYPE_DEFAULT,
+                 PNG_FILTER_TYPE_DEFAULT);
+ 
+    // Use compression level 1 — fast write, still much smaller than PPM
+    png_set_compression_level(png, 1);
+ 
+    png_write_info(png, info);
+ 
+    // Write row by row
+    for (int y = 0; y < height; y++) {
+        png_write_row(png, data + y * width * 3);
+    }
+ 
+    png_write_end(png, nullptr);
+    png_destroy_write_struct(&png, &info);
+    fclose(fp);
+    return true;
 }
 
 int main(void) {
-    unsigned char* image_s = new unsigned char[DIM * DIM * 3];
-    unsigned char* image_r = new unsigned char[DIM * DIM * 3];
-    unsigned char* image_c = new unsigned char[DIM * DIM * 3];
-    unsigned char* image_rb = new unsigned char[DIM * DIM * 3];
-    unsigned char* image_cb = new unsigned char[DIM * DIM * 3];
-    unsigned char* image_f = new unsigned char[DIM * DIM * 3];
-
-    double time_s, time_r, time_c, time_rblk, time_cblk, time_p_s, time_p_d;
-
-    // csv file for timings
-    ofstream csv("timings.csv");
-    csv << "threads,serial,1D row,1D col,2D rowblock,2D colblock,for static,for dynamic\n";
-
-    const int runs = 10;
-
-    int t;
-    for (int i = 0; i <= 24; i+=2) {
-        if (i == 0) t = 1;
-        else t = i;
-
-        omp_set_num_threads(t);
-        cout << "+---------------------+" << endl;
-        cout << "|  Thread count = " << t << "  |" << endl;
-        cout << "+---------------------+" << endl;
-
-        /* Serial run */
-        time_s = timed_multirun(image_s, kernel_serial, runs);
-
-        /* 1D Rowwise */
-        time_r = timed_multirun(image_r, kernel_row, runs);
-
-        /* 1D Colwise */
-        time_c = timed_multirun(image_c, kernel_col, runs);
-
-        /* 2D Rowblockwise */
-        time_rblk = timed_multirun(image_rb, kernel_rblk, runs);
-
-        /* 2D Colblockwise */
-        time_cblk = timed_multirun(image_cb, kernel_cblk, runs);
-
-        /* OMP for static scheduling */
-        time_p_s = timed_multirun(image_f, kernel_omp_for_static, runs);
-
-        /* OMP for dynamic scheduling */
-        time_p_d = timed_multirun(image_f, kernel_omp_for_dynamic, runs);
-
-        // append csv
-        csv << t << ","
-            << time_s << ","
-            << time_r << ","
-            << time_c << ","
-            << time_rblk << ","
-            << time_cblk << ","
-            << time_p_s << ","
-            << time_p_d << "\n";
-
-        cout << "Elapsed time:\n";
-        cout << "Serial time:\t" << time_s << "ms" << endl;
-        output("1D Rowwise", time_r, time_s);
-        output("1D Colwise", time_c, time_s);
-        output("2D Row-block", time_rblk, time_s);
-        output("2D Col-block", time_cblk, time_s);
-        output("For static", time_p_s, time_s);
-        output("For dynamic", time_p_d, time_s);
-
+    cout << "Allocating " << (DIM * DIM * 3) / (1024 * 1024) << " MB for " 
+         << DIM << "x" << DIM << " image..." << endl;
+ 
+    unsigned char* image = new unsigned char[DIM * DIM * 3];
+ 
+    cout << "Rendering with 24 threads (dynamic scheduling)..." << endl;
+    double start = omp_get_wtime();
+    kernel_omp_for_dynamic(image);
+    double elapsed = omp_get_wtime() - start;
+ 
+    cout << "Render time: " << elapsed << "s" << endl;
+    cout << "Saving PNG..." << endl;
+ 
+    if (save_png("fractal.png", image, DIM, DIM)) {
+        cout << "Saved to fractal.png" << endl;
+    } else {
+        cerr << "PNG save failed." << endl;
     }
-
-    csv.close();
-
-    /* Save result */
-    save_ppm("output/fractal_serial.ppm", image_s, DIM, DIM);
-    save_ppm("output/fractal_row.ppm", image_r, DIM, DIM);  
-    save_ppm("output/fractal_col.ppm", image_c, DIM, DIM);  
-    save_ppm("output/fractal_rb.ppm", image_rb, DIM, DIM);  
-    save_ppm("output/fractal_cb.ppm", image_cb, DIM, DIM);  
-    save_ppm("output/fractal_for.ppm", image_f, DIM, DIM);  
-
-    delete[] image_s;
-    delete[] image_r;
-    delete[] image_c;
-    delete[] image_rb;
-    delete[] image_cb;
-    delete[] image_f;
+ 
+    delete[] image;
     return 0;
 }
