@@ -1,0 +1,15 @@
+name: Block Experimental Merge
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  block-merge:
+    runs-on: ubuntu-latest
+    if: github.head_ref == 'experiment/higher-def-fractals'
+    steps:
+      - name: Prevent Merge
+        run: |
+          echo "FAIL: 'experiment/higher-def-fractals' is restricted from merging into main."
+          exit 1
