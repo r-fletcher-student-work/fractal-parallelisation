@@ -94,7 +94,21 @@ void kernel_cblk(unsigned char* ptr) {
     }
 }
 
-void kernel_omp_for(unsigned char* ptr) {
+void kernel_omp_for_static(unsigned char* ptr) {
+    #pragma omp parallel for collapse(2) schedule(static)
+    for (int y = 0; y < DIM; y++) {
+        for (int x = 0; x < DIM; x++) {
+            int offset = x + y * DIM;
+
+            int juliaValue = julia(x, y);
+            ptr[offset * 3 + 0] = 255 * juliaValue; // R
+            ptr[offset * 3 + 1] = 0;               // G
+            ptr[offset * 3 + 2] = 0;               // B
+        }
+    }
+}
+
+void kernel_omp_for_dynamic(unsigned char* ptr) {
     #pragma omp parallel for collapse(2) schedule(dynamic, 1)
     for (int y = 0; y < DIM; y++) {
         for (int x = 0; x < DIM; x++) {
@@ -158,35 +172,67 @@ int main(void) {
     unsigned char* image_cb = new unsigned char[DIM * DIM * 3];
     unsigned char* image_f = new unsigned char[DIM * DIM * 3];
 
-    double time_s, time_r, time_c, time_rblk, time_cblk, time_p;
+    double time_s, time_r, time_c, time_rblk, time_cblk, time_p_s, time_p_d;
+
+    // csv file for timings
+    ofstream csv("timings.csv");
+    csv << "threads,serial,row,col,rowblk,colblk,for_static,for_dynamic\n";
 
     const int runs = 10;
 
-    /* Serial run */
-    time_s = timed_multirun(image_s, kernel_serial, runs);
+    int t;
+    for (int i = 0; i <= 16; i+=2) {
+        if (i == 0) t = 1;
+        else t = i;
 
-    /* 1D Rowwise */
-    time_r = timed_multirun(image_r, kernel_row, runs);
+        omp_set_num_threads(t);
+        cout << "+---------------------+" << endl;
+        cout << "|  Thread count = " << t << "  |" << endl;
+        cout << "+---------------------+" << endl;
 
-    /* 1D Colwise */
-    time_c = timed_multirun(image_c, kernel_col, runs);
+        /* Serial run */
+        time_s = timed_multirun(image_s, kernel_serial, runs);
 
-    /* 2D Rowblockwise */
-    time_rblk = timed_multirun(image_rb, kernel_rblk, runs);
+        /* 1D Rowwise */
+        time_r = timed_multirun(image_r, kernel_row, runs);
 
-    /* 2D Colblockwise */
-    time_cblk = timed_multirun(image_cb, kernel_cblk, runs);
+        /* 1D Colwise */
+        time_c = timed_multirun(image_c, kernel_col, runs);
 
-    /* OMP for */
-    time_p = timed_multirun(image_f, kernel_omp_for, runs);
+        /* 2D Rowblockwise */
+        time_rblk = timed_multirun(image_rb, kernel_rblk, runs);
 
-    cout << "Elapsed time:\n";
-    cout << "Serial time:\t" << time_s << "ms" << endl;
-    output("1D Rowwise", time_r, time_s);
-    output("1D Colwise", time_c, time_s);
-    output("2D Row-block", time_rblk, time_s);
-    output("2D Col-block", time_cblk, time_s);
-    output("Collapsed for", time_p, time_s);
+        /* 2D Colblockwise */
+        time_cblk = timed_multirun(image_cb, kernel_cblk, runs);
+
+        /* OMP for static scheduling */
+        time_p_s = timed_multirun(image_f, kernel_omp_for_static, runs);
+
+        /* OMP for dynamic scheduling */
+        time_p_d = timed_multirun(image_f, kernel_omp_for_dynamic, runs);
+
+        // append csv
+        csv << t << ","
+            << time_s << ","
+            << time_r << ","
+            << time_c << ","
+            << time_rblk << ","
+            << time_cblk << ","
+            << time_p_s << ","
+            << time_p_d << "\n";
+
+        cout << "Elapsed time:\n";
+        cout << "Serial time:\t" << time_s << "ms" << endl;
+        output("1D Rowwise", time_r, time_s);
+        output("1D Colwise", time_c, time_s);
+        output("2D Row-block", time_rblk, time_s);
+        output("2D Col-block", time_cblk, time_s);
+        output("For static", time_p_s, time_s);
+        output("For dynamic", time_p_d, time_s);
+
+    }
+
+    csv.close();
 
     /* Save result */
     save_ppm("output/fractal_serial.ppm", image_s, DIM, DIM);
