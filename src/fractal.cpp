@@ -38,8 +38,11 @@ double julia(int x, int y) {
 }
 
 void kernel_row(unsigned char* ptr) {
-    #pragma omp parallel for schedule(static, 1)
-    for (int y = 0; y < DIM; y++) {
+    #pragma omp parallel 
+    {
+        int num_threads = omp_get_num_threads();
+        int curr_thread = omp_get_thread_num();
+    for (int y = curr_thread; y < DIM; y += num_threads) {
         for (int x = 0; x < DIM; x++) {
             int offset = x + y * DIM;
 
@@ -59,13 +62,17 @@ void kernel_row(unsigned char* ptr) {
                 ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
             }
         }
+    }
     }
 }
 
 void kernel_col(unsigned char* ptr) {
-    #pragma omp parallel for schedule(static, 1)
-    for (int x = 0; x < DIM; x++) {    
-        for (int y = 0; y < DIM; y++) {
+    #pragma omp parallel
+    {
+        int num_threads = omp_get_num_threads();
+        int curr_thread = omp_get_thread_num();
+    for (int y = 0; y < DIM; y++) {
+            for (int x = curr_thread; x < DIM; x += num_threads) {  
             int offset = x + y * DIM;
 
             double val = julia(x, y);
@@ -85,12 +92,17 @@ void kernel_col(unsigned char* ptr) {
             }
         }
     }
+    }
 }
 
 void kernel_rblk(unsigned char* ptr) {
-    int block_size = (int) DIM/omp_get_max_threads();
-    #pragma omp parallel for schedule(static, block_size)
-    for (int y = 0; y < DIM; y++) {
+    #pragma omp parallel 
+    {
+        int num_threads = omp_get_num_threads();
+        int curr_thread = omp_get_thread_num();
+        int block_size = (int) DIM/omp_get_max_threads();
+        int end = curr_thread == num_threads - 1 ? DIM : block_size * (curr_thread + 1);
+    for (int y = curr_thread*block_size; y < end; y++) {
         for (int x = 0; x < DIM; x++) {
             int offset = x + y * DIM;
 
@@ -111,13 +123,18 @@ void kernel_rblk(unsigned char* ptr) {
             }
         }
     }
+    }
 }
 
 void kernel_cblk(unsigned char* ptr) {
-    int block_size = (int) DIM/omp_get_max_threads();
-    #pragma omp parallel for schedule(static, block_size)
-    for (int x = 0; x < DIM; x++) {    
-        for (int y = 0; y < DIM; y++) {
+    #pragma omp parallel
+    {
+        int num_threads = omp_get_num_threads();
+        int curr_thread = omp_get_thread_num();
+        int block_size = (int) DIM/omp_get_max_threads();
+        int end = curr_thread == num_threads - 1 ? DIM : block_size * (curr_thread + 1);  
+    for (int y = 0; y < DIM; y++) {
+        for (int x = curr_thread*block_size; x < end; x++) {  
             int offset = x + y * DIM;
 
             double val = julia(x, y);
@@ -136,6 +153,7 @@ void kernel_cblk(unsigned char* ptr) {
                 ptr[offset * 3 + 2] = (unsigned char)(255 * pow(1 - t, 2));      // B   
             }
         }
+    }
     }
 }
 
@@ -254,12 +272,12 @@ int main(void) {
 
     // csv file for timings
     ofstream csv("timings.csv");
-    csv << "threads,serial,row,col,rowblk,colblk,for_static,for_dynamic\n";
+    csv << "threads,serial,1D row,1D col,2D rowblock,2D colblock,for static,for dynamic\n";
 
     const int runs = 10;
 
     int t;
-    for (int i = 0; i <= 16; i+=2) {
+    for (int i = 0; i <= 24; i+=2) {
         if (i == 0) t = 1;
         else t = i;
 
