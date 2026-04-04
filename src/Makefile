@@ -4,13 +4,12 @@ CC = gcc
 CPP = g++
 CFLAGS = -g -Wall
 OMPFLAG = -fopenmp
-PNG = -lpng
 #INCFLAG = -I "../common/"
 
 all: $(P1)
 
 $(P1): $(P1).cpp
-	$(CPP) $(CFLAGS) $(OMPFLAG) $(P1).cpp $(PNG) -o $(P1)
+	$(CPP) $(CFLAGS) $(OMPFLAG) $(P1).cpp -o $(P1)
 
 clean:
 	rm -vf $(P1)
