@@ -7,6 +7,7 @@
 using namespace std;
 
 #define DIM 768
+#define RUNS 10
 
 struct cuComplex {
     float r;
@@ -252,12 +253,12 @@ void output(string func, double func_time, double s_time) {
 }
 
 /* Runs multiple timed executions and returns the average time */
-double timed_multirun(unsigned char* ptr, std::function<void(unsigned char*)> func, int runs) {
+double timed_multirun(unsigned char* ptr, std::function<void(unsigned char*)> func) {
     double total_time = 0;
-    for (int i = 0; i < runs; i++) {
+    for (int i = 0; i < RUNS; i++) {
         total_time += timed_execute(ptr, func);
     }
-    return total_time/(double) runs;
+    return total_time/(double) RUNS;
 }
 
 int main(void) {
@@ -274,8 +275,6 @@ int main(void) {
     ofstream csv("timings.csv");
     csv << "threads,serial,1D row,1D col,2D rowblock,2D colblock,for static,for dynamic\n";
 
-    const int runs = 10;
-
     int t;
     for (int i = 0; i <= 24; i+=2) {
         if (i == 0) t = 1;
@@ -287,25 +286,25 @@ int main(void) {
         cout << "+---------------------+" << endl;
 
         /* Serial run */
-        time_s = timed_multirun(image_s, kernel_serial, runs);
+        time_s = timed_multirun(image_s, kernel_serial);
 
         /* 1D Rowwise */
-        time_r = timed_multirun(image_r, kernel_row, runs);
+        time_r = timed_multirun(image_r, kernel_row);
 
         /* 1D Colwise */
-        time_c = timed_multirun(image_c, kernel_col, runs);
+        time_c = timed_multirun(image_c, kernel_col);
 
         /* 2D Rowblockwise */
-        time_rblk = timed_multirun(image_rb, kernel_rblk, runs);
+        time_rblk = timed_multirun(image_rb, kernel_rblk);
 
         /* 2D Colblockwise */
-        time_cblk = timed_multirun(image_cb, kernel_cblk, runs);
+        time_cblk = timed_multirun(image_cb, kernel_cblk);
 
         /* OMP for static scheduling */
-        time_p_s = timed_multirun(image_f, kernel_omp_for_static, runs);
+        time_p_s = timed_multirun(image_f, kernel_omp_for_static);
 
         /* OMP for dynamic scheduling */
-        time_p_d = timed_multirun(image_f, kernel_omp_for_dynamic, runs);
+        time_p_d = timed_multirun(image_f, kernel_omp_for_dynamic);
 
         // append csv
         csv << t << ","
